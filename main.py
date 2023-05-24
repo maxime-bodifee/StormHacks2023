@@ -187,16 +187,15 @@ class App(ctk.CTk):
         open_nodes.add(nodes[self.start_point])
 
         while open_nodes:
-            toc = time.perf_counter()
-            self.timer_label.configure(text=f"Timer: {toc - tic:0.4f} seconds")
-
             if self.stop_search_flag:
                 return
+
+            toc = time.perf_counter()
+            self.timer_label.configure(text=f"Timer: {toc - tic:0.4f} seconds")
 
             current_node = min(open_nodes, key=lambda node: node.f())
             if current_node.position == self.end_point:
                 self.trace_steps(current_node)
-                self.timer_label.configure(text=f"Timer: {toc - tic:0.4f} seconds")
                 return
 
             open_nodes.remove(current_node)
@@ -260,6 +259,7 @@ class App(ctk.CTk):
 
     def stop_search(self):
         self.stop_search_flag = True
+        self.timer_label.configure(text="Timer: 0 seconds")
         for tile in self.grid_display.grid_slaves():
             tile_position = (tile.grid_info()['column'], tile.grid_info()['row'])
             if tile.cget("fg_color") != "black" and tile_position not in [self.start_point, self.end_point]:
@@ -269,6 +269,8 @@ class App(ctk.CTk):
 
     def reset_grid(self):
         self.start_point, self.end_point = None, None
+        self.stop_search_flag = True
+        self.timer_label.configure(text="Timer: 0 seconds")
         for tile in self.grid_display.grid_slaves():
             tile.configure(fg_color="white", text="", state=ctk.NORMAL)
 
