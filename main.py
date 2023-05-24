@@ -10,6 +10,8 @@ class App(ctk.CTk):
         super().__init__()
         self.start_point = None
         self.end_point = None
+        self.delay = 0.1
+        self.stop_search_flag = False
 
         # configure window
         self.title("The Path Pioneers")
@@ -75,16 +77,24 @@ class App(ctk.CTk):
 
         # slider for user to decide how to big the square grid should be
         self.grid_size = ctk.CTkSlider(self.grid_controls, from_=3, to=15, number_of_steps=12, command=self.update_label)
-        self.grid_size.grid(row=1, column=0, padx=(20, 20), pady=(20, 0), sticky="nsew")
+        self.grid_size.grid(row=1, column=0, padx=(20, 20), pady=(20, 0), sticky="ew")
         self.new_grid()
 
         # label to show grid size
         self.grid_size_label = ctk.CTkLabel(self.grid_controls, text="Grid Size: 9")
-        self.grid_size_label.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        self.grid_size_label.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
 
         # button to generate new grid
         self.new_grid_button = ctk.CTkButton(self.grid_controls, text="Create New Grid", command=self.new_grid)
-        self.new_grid_button.grid(row=1, column=1, padx=(0, 20), pady=(35, 20), sticky="nsew")
+        self.new_grid_button.grid(row=1, column=1, padx=(0, 20), pady=(20, 0), sticky="ew")
+
+        self.set_delay = ctk.CTkEntry(self.grid_controls, placeholder_text="0.1")
+        self.set_delay.grid(row=3, column=0, padx=(20, 0), pady=10, sticky="w")
+        self.set_delay.bind('<Button-1>', lambda event: self.set_delay.focus_set())
+        self.set_delay.bind('<Escape>', lambda event: self.focus_set())
+
+        self.set_delay_button = ctk.CTkButton(self.grid_controls, text="Set Delay", command=self.update_delay)
+        self.set_delay_button.grid(row=3, column=1, padx=(0, 20), pady=10, sticky="ew")
 
     def change_appearance_mode_event(self, new_appearance_mode: str):
         ctk.set_appearance_mode(new_appearance_mode)
@@ -95,6 +105,15 @@ class App(ctk.CTk):
 
     def update_label(self, *args):
         self.grid_size_label.configure(text=f"Grid Size: {int(self.grid_size.get())}")
+
+    def update_delay(self):
+        self.set_delay_button.focus_set()
+
+        try:
+            self.delay = float(self.set_delay.get())
+
+        except ValueError:
+            pass
 
     # overwrite and generate new grid
     def new_grid(self):
@@ -115,6 +134,7 @@ class App(ctk.CTk):
                                      text="", font=ctk.CTkFont(size=15))
                 tile.configure(command=lambda tle=tile: self.tile_click(tle))
                 tile.grid(row=row, column=column, padx=2, pady=2)
+                tile.bind("<B1-Motion>", self.tile_drag)
 
     def tile_click(self, tile):
         item = self.items.get()
@@ -152,6 +172,9 @@ class App(ctk.CTk):
             if self.end_point == self.start_point:
                 self.start_point = None
 
+    def tile_drag(self, event):
+        self.tile_click(event.widget)
+
     def reset_tile(self, position):
         column, row = position
         self.grid_display.grid_slaves(row=row, column=column)[0].configure(fg_color="white", text="")
@@ -164,10 +187,15 @@ class App(ctk.CTk):
         open_nodes.add(nodes[self.start_point])
 
         while open_nodes:
+            toc = time.perf_counter()
+            self.timer_label.configure(text=f"Timer: {toc - tic:0.4f} seconds")
+
+            if self.stop_search_flag:
+                return
+
             current_node = min(open_nodes, key=lambda node: node.f())
             if current_node.position == self.end_point:
                 self.trace_steps(current_node)
-                toc = time.perf_counter()
                 self.timer_label.configure(text=f"Timer: {toc - tic:0.4f} seconds")
                 return
 
@@ -180,7 +208,7 @@ class App(ctk.CTk):
                 self.grid_display.grid_slaves(row=y, column=x)[0].configure(fg_color="red")
 
             successors = [nodes.get((x + dx, y + dy), None) for dx in [-1, 0, 1] for dy in [-1, 0, 1]
-                          if dx != 0 or dy != 0]
+                          if not (dx, dy) == (0, 0)]
 
             for successor in successors:
                 if successor in closed_nodes or successor is None:
@@ -199,21 +227,8 @@ class App(ctk.CTk):
                         if successor.position not in [self.start_point, self.end_point]:
                             self.grid_display.grid_slaves(row=successor_y, column=successor_x)[0].configure(fg_color="green")
 
-            self.update_idletasks()
-            time.sleep(0.1)
-            toc = time.perf_counter()
-            self.timer_label.configure(text=f"Timer: {toc - tic:0.4f} seconds")
-
-    def start_search(self):
-        if self.start_point is not None and self.end_point is not None:
-            nodes = {}
-            for tile in self.grid_display.grid_slaves():
-                tile.configure(state=ctk.DISABLED)
-                tile_position = (tile.grid_info()['column'], tile.grid_info()['row'])
-                if tile.cget("fg_color") != "black":
-                    nodes[tile_position] = Node(tile_position)
-
-            self.astar_search(nodes)
+            self.update()
+            time.sleep(self.delay)
 
     def trace_steps(self, node):
         if node.parent is None:
@@ -222,10 +237,29 @@ class App(ctk.CTk):
         x, y = node.position
         self.grid_display.grid_slaves(row=y, column=x)[0].configure(fg_color="light blue")
         self.update_idletasks()
-        time.sleep(0.05)
+        time.sleep(self.delay)
         self.trace_steps(node.parent)
 
+    def start_search(self):
+        self.stop_search()
+        self.stop_search_flag = False
+
+        self.start_button.configure(state=ctk.DISABLED)
+        if self.start_point is not None and self.end_point is not None:
+            nodes = {}
+            for tile in self.grid_display.grid_slaves():
+                tile.configure(state=ctk.DISABLED)
+                tile_position = (tile.grid_info()['column'], tile.grid_info()['row'])
+
+                if tile.cget("fg_color") != "black":
+                    nodes[tile_position] = Node(tile_position)
+
+            self.astar_search(nodes)
+
+        self.start_button.configure(state=ctk.NORMAL)
+
     def stop_search(self):
+        self.stop_search_flag = True
         for tile in self.grid_display.grid_slaves():
             tile_position = (tile.grid_info()['column'], tile.grid_info()['row'])
             if tile.cget("fg_color") != "black" and tile_position not in [self.start_point, self.end_point]:
